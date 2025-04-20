@@ -1,9 +1,14 @@
 import 'package:chat_appl_v_two/chat/chat_navigator.dart';
 import 'package:chat_appl_v_two/chat/chat_view_model.dart';
+import 'package:chat_appl_v_two/chat/message_widget.dart';
+import 'package:chat_appl_v_two/model/message.dart';
 import 'package:chat_appl_v_two/model/room.dart';
+import 'package:chat_appl_v_two/provider/user_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:chat_appl_v_two/utils.dart'as Utils;
 
 class ChatScreen extends StatefulWidget {
   static const String routeName = "chat screen";
@@ -15,6 +20,8 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> implements ChatNavigator {
   @override
   ChatViewModel viewModel = ChatViewModel();
+  String messageContent="";
+  TextEditingController controller = TextEditingController();
   @override
   void initState() {
     // TODO: implement initState
@@ -24,6 +31,10 @@ class _ChatScreenState extends State<ChatScreen> implements ChatNavigator {
 
   Widget build(BuildContext context) {
     var args=ModalRoute.of(context)?.settings.arguments as Room;
+    var provider =Provider.of<UserProvider>(context);
+    viewModel.room=args;
+    viewModel.cuurentUser=provider.user!;
+    viewModel.lisitenForUpdateRoomMessages();
     return ChangeNotifierProvider(
         create: (context) => viewModel,
         child: Stack(children: [
@@ -56,10 +67,29 @@ class _ChatScreenState extends State<ChatScreen> implements ChatNavigator {
             ),
             child: Column(
               children: [
-                Expanded(child: Container()),
+                Expanded(child:StreamBuilder<QuerySnapshot<Message>>(
+                    stream: viewModel.streemMessage,
+                    builder: (context,asyncSnapshot){
+                      if(asyncSnapshot.connectionState==ConnectionState.waiting){
+                        return Center(child: CircularProgressIndicator(),);
+                      }else if(asyncSnapshot.hasError){
+                        return Text(asyncSnapshot.error.toString());
+                      }else{
+                        var messagesList=asyncSnapshot.data?.docs.map((doc)=>doc.data()).toList()??[];
+                       return ListView.builder(
+                            itemBuilder: (context,index){
+                              return MessageWidget(message:messagesList[index]);
+                            }
+                            ,itemCount: messagesList.length,);
+                      }
+                    })),
                 Row(
                   children: [
                     Expanded(child: TextField(
+                      controller: controller,
+                      onChanged: (text){
+                        messageContent = text;
+                      },
                       decoration: InputDecoration(
                         contentPadding: EdgeInsets.all(4),
                         border: OutlineInputBorder(
@@ -69,7 +99,9 @@ class _ChatScreenState extends State<ChatScreen> implements ChatNavigator {
                       ),
                     ))
                     ,SizedBox(width: 12)
-                    ,ElevatedButton(onPressed: (){}, child: Row(
+                    ,ElevatedButton(onPressed: (){
+                      viewModel.sendMessage(messageContent);
+                    }, child: Row(
                       children: [
                       Text("send"),
                       SizedBox(width: 10,),
@@ -82,5 +114,17 @@ class _ChatScreenState extends State<ChatScreen> implements ChatNavigator {
           ),
           ),
         ]));
+  }
+
+  @override
+  void showMessage(String message) {
+    Utils.showMessage(context, message, "ok", (context){
+      Navigator.pop(context);
+    });
+  }
+
+  @override
+  void clearMessage(){
+    controller.clear();
   }
 }
